@@ -2,70 +2,37 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>資産ダッシュボード</title>
+<title>資産管理Pro</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-body{
-    margin:0;
-    font-family:Arial;
-    background:#f4f6f9;
-}
-header{
-    background:#1f2937;
-    color:white;
-    padding:15px;
-    font-size:20px;
-}
-.container{
-    padding:20px;
-}
-.card{
-    background:white;
-    padding:20px;
-    border-radius:12px;
-    margin-bottom:20px;
-    box-shadow:0 4px 10px rgba(0,0,0,0.05);
-}
-.flex{
-    display:flex;
-    gap:20px;
-    flex-wrap:wrap;
-}
-input,select,button{
-    padding:8px;
-    margin:5px 0;
-}
-button{
-    background:#2563eb;
-    color:white;
-    border:none;
-    border-radius:6px;
-}
-h2{
-    margin-top:0;
-}
-.total{
-    font-size:24px;
-    font-weight:bold;
-}
-.green{color:green;}
-.red{color:red;}
-table{
-    width:100%;
-    border-collapse:collapse;
-}
-th,td{
-    padding:6px;
-    border-bottom:1px solid #ddd;
-    text-align:center;
-}
+body{margin:0;font-family:Arial;background:#f3f4f6;}
+header{background:#111827;color:white;padding:15px;text-align:center;font-size:20px;}
+.container{padding:15px;padding-bottom:80px;}
+.card{background:white;padding:15px;border-radius:12px;margin-bottom:15px;box-shadow:0 3px 8px rgba(0,0,0,0.05);}
+h2{margin:0 0 10px;}
+input,select,button{padding:6px;margin:4px 0;}
+button{background:#2563eb;color:white;border:none;border-radius:6px;}
+.total{font-size:22px;font-weight:bold;}
+.progress{background:#e5e7eb;border-radius:6px;height:20px;overflow:hidden;}
+.progress-bar{background:#10b981;height:100%;text-align:center;color:white;font-size:12px;}
+.alert{color:red;font-weight:bold;}
+nav{position:fixed;bottom:0;width:100%;background:white;border-top:1px solid #ddd;display:flex;justify-content:space-around;padding:10px 0;}
+nav button{background:none;color:#2563eb;font-weight:bold;}
+.hidden{display:none;}
 </style>
 </head>
 <body>
 
-<header>💰 資産ダッシュボード</header>
+<header>💰 資産管理Pro</header>
 
 <div class="container">
+
+<div class="card">
+<h2>月切替</h2>
+<button onclick="changeMonth(-1)">◀</button>
+<span id="currentMonth"></span>
+<button onclick="changeMonth(1)">▶</button>
+</div>
 
 <div class="card">
 <h2>総資産</h2>
@@ -73,17 +40,27 @@ th,td{
 </div>
 
 <div class="card">
-<h2>口座追加</h2>
-<input type="text" id="accountName" placeholder="口座名">
-<input type="number" id="accountAmount" placeholder="残高">
-<button onclick="addAccount()">追加</button>
-<ul id="accountList"></ul>
+<h2>予算管理</h2>
+<input type="number" id="budgetInput" placeholder="月予算">
+<button onclick="setBudget()">設定</button>
+<div class="progress">
+<div id="budgetBar" class="progress-bar">0%</div>
+</div>
+<div id="budgetAlert" class="alert"></div>
+</div>
+
+<div class="card">
+<h2>固定費登録</h2>
+<input type="text" id="fixedName" placeholder="項目">
+<input type="number" id="fixedAmount" placeholder="金額">
+<button onclick="addFixed()">登録</button>
+<button onclick="applyFixed()">今月反映</button>
+<ul id="fixedList"></ul>
 </div>
 
 <div class="card">
 <h2>家計簿入力</h2>
 <input type="date" id="date">
-<select id="accountSelect"></select>
 <select id="type">
 <option value="income">収入</option>
 <option value="expense">支出</option>
@@ -93,161 +70,122 @@ th,td{
 <option>固定費</option>
 <option>娯楽</option>
 <option>投資</option>
-<option>給料</option>
 <option>その他</option>
 </select>
 <input type="number" id="amount" placeholder="金額">
 <button onclick="addTransaction()">追加</button>
-
-<table>
-<thead>
-<tr><th>日付</th><th>口座</th><th>分類</th><th>金額</th></tr>
-</thead>
-<tbody id="transactionList"></tbody>
-</table>
 </div>
 
-<div class="flex">
+<div class="card">
+<h2>フィルター</h2>
+<select id="filterCategory" onchange="render()">
+<option value="all">全て</option>
+<option>食費</option>
+<option>固定費</option>
+<option>娯楽</option>
+<option>投資</option>
+<option>その他</option>
+</select>
+</div>
 
-<div class="card" style="flex:1;">
+<div class="card">
 <h2>月別収支</h2>
 <canvas id="monthlyChart"></canvas>
 </div>
 
-<div class="card" style="flex:1;">
-<h2>カテゴリ別支出</h2>
-<canvas id="categoryChart"></canvas>
 </div>
 
-</div>
-
-<div class="card">
-<h2>資産推移</h2>
-<canvas id="assetChart"></canvas>
-</div>
-
-</div>
+<nav>
+<button onclick="scrollToTop()">TOP</button>
+</nav>
 
 <script>
-let accounts = JSON.parse(localStorage.getItem("accounts"))||[];
-let transactions = JSON.parse(localStorage.getItem("transactions"))||[];
+let transactions=JSON.parse(localStorage.getItem("transactions"))||[];
+let fixed=JSON.parse(localStorage.getItem("fixed"))||[];
+let budget=JSON.parse(localStorage.getItem("budget"))||0;
+let current=new Date();
 
 function save(){
-localStorage.setItem("accounts",JSON.stringify(accounts));
 localStorage.setItem("transactions",JSON.stringify(transactions));
+localStorage.setItem("fixed",JSON.stringify(fixed));
+localStorage.setItem("budget",JSON.stringify(budget));
 }
 
-function addAccount(){
-const name=accountName.value;
-const amount=parseFloat(accountAmount.value);
-if(!name||isNaN(amount))return;
-accounts.push({name,amount});
+function changeMonth(n){
+current.setMonth(current.getMonth()+n);
+render();
+}
+
+function setBudget(){
+budget=parseFloat(budgetInput.value)||0;
+save();
+render();
+}
+
+function addFixed(){
+fixed.push({name:fixedName.value,amount:parseFloat(fixedAmount.value)});
+save();
+render();
+}
+
+function applyFixed(){
+let month=current.toISOString().slice(0,7);
+fixed.forEach(f=>{
+transactions.push({date:month+"-01",type:"expense",category:"固定費",amount:f.amount});
+});
 save();
 render();
 }
 
 function addTransaction(){
-const date=document.getElementById("date").value;
-const account=document.getElementById("accountSelect").value;
-const type=document.getElementById("type").value;
-const category=document.getElementById("category").value;
-const amount=parseFloat(document.getElementById("amount").value);
-if(!date||!account||isNaN(amount))return;
-
-transactions.push({date,account,type,category,amount});
-accounts.forEach(a=>{
-if(a.name===account){
-a.amount+= type==="income"?amount:-amount;
-}
+transactions.push({
+date:date.value,
+type:type.value,
+category:category.value,
+amount:parseFloat(amount.value)
 });
 save();
 render();
 }
 
+let chart;
+
 function render(){
-renderAccounts();
-renderTransactions();
-renderCharts();
-}
+currentMonth.innerText=current.toISOString().slice(0,7);
+fixedList.innerHTML="";
+fixed.forEach(f=>fixedList.innerHTML+=`<li>${f.name} ¥${f.amount}</li>`);
 
-function renderAccounts(){
-accountList.innerHTML="";
-accountSelect.innerHTML="";
+let month=current.toISOString().slice(0,7);
 let total=0;
-accounts.forEach(a=>{
-total+=a.amount;
-accountList.innerHTML+=`<li>${a.name} : ¥${a.amount.toLocaleString()}</li>`;
-accountSelect.innerHTML+=`<option>${a.name}</option>`;
-});
-totalAssets.innerText="¥"+total.toLocaleString();
-}
-
-function renderTransactions(){
-transactionList.innerHTML="";
-transactions.forEach(t=>{
-let sign=t.type==="income"?"+":"-";
-transactionList.innerHTML+=`
-<tr>
-<td>${t.date}</td>
-<td>${t.account}</td>
-<td>${t.category}</td>
-<td class="${t.type==="income"?"green":"red"}">
-${sign}¥${t.amount.toLocaleString()}
-</td>
-</tr>`;
-});
-}
-
-let monthlyChart,categoryChart,assetChart;
-
-function renderCharts(){
-
-let monthly={};
-let category={};
-let assetHistory=[];
-let total=0;
-
-accounts.forEach(a=>total+=a.amount);
-assetHistory.push(total);
+let expense=0;
+let monthly=0;
 
 transactions.forEach(t=>{
-let month=t.date.slice(0,7);
-if(!monthly[month])monthly[month]=0;
-monthly[month]+=t.type==="income"?t.amount:-t.amount;
-
-if(t.type==="expense"){
-if(!category[t.category])category[t.category]=0;
-category[t.category]+=t.amount;
+if(t.date.startsWith(month)){
+let signed=t.type==="income"?t.amount:-t.amount;
+monthly+=signed;
+if(t.type==="expense")expense+=t.amount;
 }
 });
 
-if(monthlyChart)monthlyChart.destroy();
-monthlyChart=new Chart(monthlyChart=document.getElementById("monthlyChart"),{
+totalAssets.innerText="¥"+monthly.toLocaleString();
+
+let percent=budget?Math.round((expense/budget)*100):0;
+budgetBar.style.width=percent+"%";
+budgetBar.innerText=percent+"%";
+budgetAlert.innerText=percent>100?"⚠ 予算超過！":"";
+
+if(chart)chart.destroy();
+chart=new Chart(document.getElementById("monthlyChart"),{
 type:"bar",
 data:{
-labels:Object.keys(monthly),
-datasets:[{label:"月収支",data:Object.values(monthly)}]
+labels:[month],
+datasets:[{label:"月収支",data:[monthly]}]
 }
 });
+}
 
-if(categoryChart)categoryChart.destroy();
-categoryChart=new Chart(categoryChart=document.getElementById("categoryChart"),{
-type:"pie",
-data:{
-labels:Object.keys(category),
-datasets:[{data:Object.values(category)}]
-}
-});
-
-if(assetChart)assetChart.destroy();
-assetChart=new Chart(assetChart=document.getElementById("assetChart"),{
-type:"line",
-data:{
-labels:["現在"],
-datasets:[{label:"総資産",data:assetHistory}]
-}
-});
-}
+function scrollToTop(){window.scrollTo({top:0,behavior:"smooth"});}
 
 render();
 </script>
