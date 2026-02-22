@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>資産管理アプリ</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body {
+    font-family: Arial;
+    background: #f4f6f9;
+    padding: 20px;
+}
+.container {
+    max-width: 1000px;
+    margin: auto;
+}
+.card {
+    background: white;
+    padding: 20px;
+    margin-bottom: 20px;
+    border-radius: 10px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+}
+input, select, button {
+    padding: 8px;
+    margin: 5px;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+th, td {
+    padding: 6px;
+    border-bottom: 1px solid #ddd;
+    text-align: center;
+}
+.calendar {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+}
+.day {
+    border: 1px solid #ddd;
+    min-height: 80px;
+    padding: 5px;
+    font-size: 12px;
+}
+.income { color: green; }
+.expense { color: red; }
+</style>
+</head>
+<body>
+
+<div class="container">
+<h1>💰 資産管理アプリ</h1>
+
+<div class="card">
+<h2>資産登録</h2>
+<input type="text" id="assetName" placeholder="口座名">
+<input type="number" id="assetAmount" placeholder="金額">
+<button onclick="addAsset()">追加</button>
+<h3 id="totalAssets">総資産: ¥0</h3>
+</div>
+
+<div class="card">
+<h2>家計簿</h2>
+<input type="date" id="date">
+<select id="type">
+<option value="income">収入</option>
+<option value="expense">支出</option>
+</select>
+<input type="text" id="description" placeholder="内容">
+<input type="number" id="amount" placeholder="金額">
+<button onclick="addTransaction()">追加</button>
+
+<table>
+<thead>
+<tr><th>日付</th><th>種類</th><th>内容</th><th>金額</th></tr>
+</thead>
+<tbody id="transactionList"></tbody>
+</table>
+<h3 id="balance">収支合計: ¥0</h3>
+</div>
+
+<div class="card">
+<h2>月別収支グラフ</h2>
+<canvas id="chart"></canvas>
+</div>
+
+<div class="card">
+<h2>カレンダー表示</h2>
+<div id="calendar" class="calendar"></div>
+</div>
+
+</div>
+
+<script>
+let assets = JSON.parse(localStorage.getItem("assets")) || [];
+let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
+
+function saveData() {
+    localStorage.setItem("assets", JSON.stringify(assets));
+    localStorage.setItem("transactions", JSON.stringify(transactions));
+}
+
+function addAsset() {
+    const name = assetName.value;
+    const amount = parseFloat(assetAmount.value);
+    if (!name || isNaN(amount)) return alert("入力してください");
+    assets.push({ name, amount });
+    assetName.value = "";
+    assetAmount.value = "";
+    saveData();
+    renderAssets();
+}
+
+function renderAssets() {
+    const total = assets.reduce((sum,a)=>sum+a.amount,0);
+    totalAssets.innerText = "総資産: ¥" + total.toLocaleString();
+}
+
+function addTransaction() {
+    const date = document.getElementById("date").value;
+    const type = document.getElementById("type").value;
+    const description = document.getElementById("description").value;
+    const amount = parseFloat(document.getElementById("amount").value);
+
+    if (!date || !description || isNaN(amount)) return alert("入力してください");
+
+    transactions.push({ date, type, description, amount });
+    saveData();
+    renderTransactions();
+    renderChart();
+    renderCalendar();
+}
+
+function renderTransactions() {
+    const list = document.getElementById("transactionList");
+    list.innerHTML = "";
+    let balance = 0;
+
+    transactions.forEach(t=>{
+        const signed = t.type==="income"?t.amount:-t.amount;
+        balance += signed;
+        list.innerHTML += `
+        <tr>
+            <td>${t.date}</td>
+            <td class="${t.type}">${t.type==="income"?"収入":"支出"}</td>
+            <td>${t.description}</td>
+            <td>¥${signed.toLocaleString()}</td>
+        </tr>`;
+    });
+
+    balance.innerText;
+    document.getElementById("balance").innerText =
+        "収支合計: ¥" + balance.toLocaleString();
+}
+
+let chart;
+function renderChart() {
+    const monthly = {};
+
+    transactions.forEach(t=>{
+        const month = t.date.slice(0,7);
+        if (!monthly[month]) monthly[month]=0;
+        monthly[month] += t.type==="income"?t.amount:-t.amount;
+    });
+
+    const labels = Object.keys(monthly);
+    const data = Object.values(monthly);
+
+    if(chart) chart.destroy();
+    chart = new Chart(document.getElementById("chart"),{
+        type:"bar",
+        data:{
+            labels:labels,
+            datasets:[{
+                label:"月別収支",
+                data:data
+            }]
+        }
+    });
+}
+
+function renderCalendar() {
+    const cal = document.getElementById("calendar");
+    cal.innerHTML="";
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+
+    const firstDay = new Date(year,month,1).getDay();
+    const lastDate = new Date(year,month+1,0).getDate();
+
+    for(let i=0;i<firstDay;i++){
+        cal.innerHTML += `<div></div>`;
+    }
+
+    for(let d=1; d<=lastDate; d++){
+        const dateStr = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+        let dayContent = `<strong>${d}</strong><br>`;
+        transactions.forEach(t=>{
+            if(t.date===dateStr){
+                const sign = t.type==="income"?"+":"-";
+                dayContent += `<div class="${t.type}">${sign}${t.amount}</div>`;
+            }
+        });
+        cal.innerHTML += `<div class="day">${dayContent}</div>`;
+    }
+}
+
+renderAssets();
+renderTransactions();
+renderChart();
+renderCalendar();
+</script>
+
+</body>
+</html>
